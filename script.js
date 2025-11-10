@@ -1,79 +1,123 @@
-const apiKey = "ce35ce93c19f45689d2fea0c01902bb1";
+document.addEventListener('DOMContentLoaded', () => {
+ 
+  const newsContainer = document.getElementById('news-container');
+  const searchInput = document.getElementById('search-input');
+  const searchBtn = document.getElementById('search-btn');
+  const categoryBtns = document.querySelectorAll('.category-btn');
 
-$(document).ready(function () {
-  loadNews("general");
+  let currentCategory = 'general';
+  let currentSearchTerm = '';
 
-  $(".news-category").click(function () {
-    $(".news-category").removeClass("active");
-    $(this).addClass("active");
+  function init() {
+    fetchNews(currentCategory);
+    setupEventListeners();
+  }
 
-    const category = $(this).data("category");
-    loadNews(category);
-  });
+  function setupEventListeners() {
+    searchBtn.addEventListener('click', handleSearch);
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        handleSearch();
+      }
+    });
 
-  $("#searchButton").click(function () {
-    const query = $("#searchInput").val();
-    if (query.trim() !== "") loadNews("general", query);
-  });
+    categoryBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        categoryBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
 
-  $("#searchInput").keypress(function (e) {
-    if (e.which === 13) {
-      const query = $(this).val();
-      if (query.trim() !== "") loadNews("general", query);
+        currentCategory = btn.getAttribute('data-category');
+        currentSearchTerm = '';
+        searchInput.value = '';
+
+        fetchNews(currentCategory);
+      });
+    });
+  }
+
+  function handleSearch() {
+    const searchTerm = searchInput.value.trim();
+    if (searchTerm) {
+      currentSearchTerm = searchTerm;
+      fetchNews(currentCategory, searchTerm);
     }
-  });
-});
+  }
 
-function loadNews(category = "general", query = "") {
-  const container = $("#news-container");
-  container.html("<p class='text-center text-muted'>Loading news...</p>");
+  function fetchNews(category, searchTerm = '') {
+  newsContainer.innerHTML = `
+    <div class="loading">
+      <i class="fas fa-spinner"></i>
+      <p>Loading news articles...</p>
+    </div>
+  `;
 
-  let url = `https://newsapi.org/v2/top-headlines?country=us&category=${category}&apiKey=${apiKey}`;
-  if (query) url += `&q=${query}`;
+  // Ganti URL langsung ke API dengan panggilan ke proxy di Vercel
+  let url = `/api/news?category=${category}`;
+  if (searchTerm) {
+    url = `/api/news?q=${encodeURIComponent(searchTerm)}`;
+  }
 
-  const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+  fetch(url)
+    .then((response) => {
+      if (!response.ok) throw new Error('Network response was not ok');
+      return response.json();
+    })
+    .then((data) => {
+      displayNews(data.articles);
+    })
+    .catch((error) => {
+      newsContainer.innerHTML = `
+        <div class="error-message">
+          <i class="fas fa-exclamation-triangle"></i>
+          <h3>Failed to load news</h3>
+          <p>Please check your connection and try again.</p>
+          <p>Error: ${error.message}</p>
+        </div>
+      `;
+      console.error('Error fetching news:', error);
+    });
+}
 
-  $.getJSON(proxyUrl, function (data) {
-    container.html("");
-
-    if (!data.articles || !data.articles.length) {
-      container.html("<p class='text-center text-muted'>No news available.</p>");
+  function displayNews(articles) {
+    if (!articles || articles.length === 0) {
+      newsContainer.innerHTML = `
+        <div class="error-message">
+          <i class="fas fa-newspaper"></i>
+          <h3>No news articles found</h3>
+          <p>Try a different search term or category.</p>
+        </div>
+      `;
       return;
     }
 
-    data.articles.slice(0, 9).forEach((a) => {
-      const title = a.title || "No Title";
-      const desc = a.description || "No description available.";
-      const image = a.urlToImage || "https://via.placeholder.com/400x200";
-      const link = a.url || "#";
+    newsContainer.innerHTML = '';
 
-      container.append(`
-        <div class="col-md-4 col-sm-6 mb-4">
-          <div class="card">
-            <img src="${image}" class="card-img-top" alt="news">
-            <div class="card-body">
-              <h6 class="fw-bold text-primary">${title}</h6>
-              <p class="card-description">${desc}</p>
-              <a href="#" class="read-more-btn mt-auto">Read More</a>
-              <a href="${link}" target="_blank" class="btn btn-outline-primary btn-sm mt-2">Go to Source</a>
-            </div>
-          </div>
+    articles.forEach((article) => {
+      const newsCard = document.createElement('div');
+      newsCard.className = 'news-card';
+
+      const publishedDate = new Date(article.publishedAt).toLocaleDateString();
+
+      newsCard.innerHTML = `
+        <div class="news-image">
+          <img src="${article.urlToImage || 'https://via.placeholder.com/400x200?text=No+Image'}" alt="${article.title}" />
         </div>
-      `);
-    });
+        <div class="news-content">
+          <div class="news-source">
+            <span>${article.source.name}</span>
+            <span>${publishedDate}</span>
+          </div>
+          <h3 class="news-title">${article.title}</h3>
+          <p class="news-desc">${article.description || 'No description available.'}</p>
+          <a href="${article.url}" target="_blank" rel="noopener" class="news-link">
+            Read more <i class="fas fa-arrow-right"></i>
+          </a>
+        </div>
+      `;
 
-    $(".read-more-btn").on("click", function (e) {
-      e.preventDefault();
-      const desc = $(this).siblings(".card-description");
-      desc.toggleClass("expanded");
-
-      if (desc.hasClass("expanded")) {
-        $(this).text("Read Less");
-      } else {
-        $(this).text("Read More");
-      }
+      newsContainer.appendChild(newsCard);
     });
-  }).fail(() => {
-    container.html("<p class='text-center text-danger'>Failed to load news.</p>");
-  });
-}
+  }
+
+  init();
+});
